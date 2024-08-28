@@ -6,6 +6,7 @@ const debug = require('debug')('prismarine-auth')
 const { createHash } = require('./common/Util')
 const { Endpoints, msalConfig } = require('./common/Constants')
 const FileCache = require('./common/cache/FileCache')
+const ExternalCache = require("./common/cache/ExternalCache");
 
 const LiveTokenManager = require('./TokenManagers/LiveTokenManager')
 const JavaTokenManager = require('./TokenManagers/MinecraftJavaTokenManager')
@@ -41,12 +42,19 @@ class MicrosoftAuthFlow {
 
   initTokenManagers (username, cache, forceRefresh) {
     if (typeof cache !== 'function') {
-      let cachePath = cache
+      let cachePath = cache;
+      let url;
+
+      try {
+        url = new URL(cachePath)
+      } catch {
+        url = null;
+      }
 
       debug(`Using cache path: ${cachePath}`)
 
       try {
-        if (!fs.existsSync(cachePath)) {
+        if (!url && !fs.existsSync(cachePath)) {
           fs.mkdirSync(cachePath, { recursive: true })
         }
       } catch (e) {
@@ -58,11 +66,19 @@ class MicrosoftAuthFlow {
         if (!CACHE_IDS.includes(cacheName)) {
           throw new Error(`Cannot instantiate cache for unknown ID: '${cacheName}'`)
         }
+
         const hash = createHash(username)
-        const result = new FileCache(path.join(cachePath, `./${hash}_${cacheName}-cache.json`))
+
+        const result = (
+          url 
+            ? new ExternalCache(new URL(`./${hash}/${cacheName}`, url))
+          : new FileCache(path.join(cachePath, `./${hash}_${cacheName}-cache.json`))
+        )
+
         if (forceRefresh) {
           result.reset()
         }
+
         return result
       }
     }
